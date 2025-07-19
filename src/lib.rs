@@ -1,67 +1,71 @@
 //! This crate provides a simple TokenBucket object for use in rate-
-//! limiting. 
-//! 
+//! limiting.
+//!
 //! # Short Example Program
 //!
 //! ```no_run
 //! use tokenbucket::TokenBucket;
 //! use tokenbucket::TokenAcquisitionResult;
 //! use std::{thread, time};
-//! 
+//!
 //! // Will acquire tokens at the specified rate for the specified duration.
 //! // After each acquisition, the AcquisitionResult will be printed.
 //! fn run(bucket: &mut TokenBucket, rate: u32, duration: u32) {
 //!     for _ in 0..=(rate * duration) {
 //!         // Acquire 1 token from the bucket.
 //!         let acquisition: TokenAcquisitionResult = bucket.acquire(1.0);
-//! 
+//!
 //!         // Determine the acquisition result.
 //!         match acquisition {
 //!             Ok(rate)  => println!("rate/allow: {}, true", rate),
 //!             Err(rate) => println!("rate/allow: {}, false", rate),
 //!         }
-//!         
+//!
 //!         // Sleep for enough time to match the desired rate/second.
 //!         thread::sleep(time::Duration::from_micros(
 //!             (1000000.0 * (1.0 / rate as f64)) as u64,
 //!         ));
 //!     }
 //! }
-//! 
+//!
 //! fn main() {
 //!     // Create the TokenBucket object
 //!     let mut token_bucket: TokenBucket = TokenBucket::new(5.0, 100.0);
-//! 
+//!
 //!     // Start of by acquiring 60 tokens per second for 10 seconds.
 //!     run(&mut token_bucket, 60, 10);
-//! 
+//!
 //!     // Slow down to 2 tokens per second for 10 seconds.
 //!     run(&mut token_bucket, 2, 10);
 //! }
 //! ```
 
+#[cfg(not(feature = "web"))]
 use std::time::SystemTime;
+
+#[cfg(feature = "web")]
+use web_time::SystemTime;
 
 /// Represents a thread-safe token bucket object.
 pub struct TokenBucket {
     // Represents the maximum number of acquisitions per second that
     // this token bucket can sustain. `r` tokens will be added to the
     // bucket each second to sustain acquisitions.
-    r:      f64,
+    r: f64,
     // Represents the "burst" value for the bucket. This is the
     // maximum number of tokens that can be consumed at one time when
     // the bucket is full. It can also be described as the maximum
     // volume of the bucket.
-    b:      f64,
+    b: f64,
     // Represents the number of tokens currently available for
     // acquisition in the bucket.
     tokens: f64,
     // Represents the last time at which one or more tokens was
     // acquired from the bucket.
-    last:   SystemTime,
+    last: SystemTime,
 }
 
-/// Represents the acquisition result from a call to 
+/// Represents the acquisition result from a call to
 /// [TokenBucket.acquire()](struct.TokenBucket.html#method.acquire).
 ///
 /// Err() is called if the number of tokens desired is not currently
@@ -101,7 +105,7 @@ impl TokenBucket {
         }
     }
 
-    /// Attempts to acquire `count` tokens from the bucket. 
+    /// Attempts to acquire `count` tokens from the bucket.
     ///
     /// Returns a
     /// [TokenAcquisitionResult](type.TokenAcquisitionResult.html).
@@ -142,14 +146,15 @@ impl TokenBucket {
     /// ```
     pub fn acquire(&mut self, count: f64) -> TokenAcquisitionResult {
         let now = SystemTime::now();
-        let duration_ms: u128 = now.duration_since(self.last)
-                                   .expect("clock went backwards")
-                                   .as_millis();
+        let duration_ms: u128 = now
+            .duration_since(self.last)
+            .expect("clock went backwards")
+            .as_millis();
 
         // Replenish tokens based on the time passed
-        self.tokens = self.b.min(
-            self.tokens + (self.r * duration_ms as f64) / 1000.0,
-        );
+        self.tokens = self
+            .b
+            .min(self.tokens + (self.r * duration_ms as f64) / 1000.0);
 
         // Check if there are enough tokens available
         let allowed = self.tokens >= count;
